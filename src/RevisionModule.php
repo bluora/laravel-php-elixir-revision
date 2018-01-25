@@ -23,6 +23,8 @@ class RevisionModule extends AbstractModule
 
         Elixir::storePath($source_path);
 
+        Elixir::makeDir($source_path.'/../.elixir-revision-cache', true);
+
         if (empty($options)) {
             return true;
         }
@@ -89,8 +91,8 @@ class RevisionModule extends AbstractModule
         $options = [];
         parse_str($text_options, $options);
 
-        if (!isset($options['hash_length'])) {
-            $options['hash_length'] = 8;
+        if (!isset($options['hash'])) {
+            $options['hash'] = 'sha256';
         }
 
         $manifest = [];
@@ -99,14 +101,27 @@ class RevisionModule extends AbstractModule
             if (isset($options['minify'])) {
                 Elixir::console()->line('   Minification is enabled.');
             }
-            Elixir::console()->line(sprintf('   Generated hash is set to %s characters.', $options['hash_length']));
+            if (isset($options['hash'])) {
+                Elixir::console()->line(sprintf('   Hash set to %s.', $options['hash']));
+            }
+            if (isset($options['hash_length'])) {
+                Elixir::console()->line(sprintf('   Hash reduced to %s characters.', $options['hash_length']));
+            }
             Elixir::console()->line('');
         }
 
         foreach ($paths as $source_file) {
 
-            // Generate sha1 of file.
-            $sha1 = substr(sha1_file($source_file), 0, $options['hash_length']);
+            // Generate hash of file.
+            if ($options['hash'] === 'mtime') {
+                $file_hash = filemtime($source_file);
+            } else {
+                $file_hash = hash_file($options['hash'], $source_file);
+            }
+
+            if (isset($options['hash_length'])) {
+                $file_hash = substr($file_hash, 0, $options['hash_length']);
+            }
 
             // Source file details
             $path_info = pathinfo($source_file);
@@ -122,7 +137,7 @@ class RevisionModule extends AbstractModule
             }
 
             // Hashed and minified new file name.
-            $destination_file = $desination_folder.'/'.$relative_folder.'/'.$path_info['filename'].'.'.$sha1.'.'.$minify_ext.$path_info['extension'];
+            $destination_file = $desination_folder.'/'.$relative_folder.'/'.$path_info['filename'].'.'.$file_hash.'.'.$minify_ext.$path_info['extension'];
 
             if (!Elixir::dryRun()) {
                 // Check that the destination folder exists.
@@ -133,8 +148,27 @@ class RevisionModule extends AbstractModule
 
                 // Process minification to destination.
                 if ($minify) {
-                    $class = '\\MatthiasMullie\\Minify\\'.strtoupper($path_info['extension']);
-                    (new $class($source_file))->minify($destination_file);
+                    // Minify cache.
+                    $minify_cache = $source_path.'/../.elixir-revision-cache';
+                    $minify_file_hash = hash('sha256', $source_file);
+                    $minify_contents_hash = hash_file('sha256', $source_file);
+                    $minify_previous_path = $minify_cache.'/'.$minify_file_hash.'.'.$minify_contents_hash;
+
+                    if (!file_exists($minify_previous_path)) {
+                        $class = '\\MatthiasMullie\\Minify\\'.strtoupper($path_info['extension']);
+                        (new $class($source_file))->minify($minify_previous_path);
+                    }
+
+                    copy($minify_previous_path, $destination_file);
+
+                    // Remove previous copies.
+                    foreach (glob($minify_cache.'/'.$minify_file_hash.'.*') as $file_path) {
+                        if ($minify_previous_path !== $file_path) {
+                            continue;
+                        }
+
+                        unlink($file_path);
+                    }
                 }
 
                 // Or just copy the file.
@@ -157,12 +191,12 @@ class RevisionModule extends AbstractModule
 
         // Make it human viewable.
         if (!Elixir::dryRun()) {
-            $json_manifest = json_encode($manifest, JSON_UNESCAPED_SLASHES);
-            $json_manifest = preg_replace('~","~', "\",\n\"", $json_manifest);
-            $json_manifest = preg_replace('~^\{~', "{\n", $json_manifest);
-            $json_manifest = preg_replace('~\}$~', "\n}", $json_manifest);
-            $json_manifest = preg_replace('~^\"~m', '  "', $json_manifest);
-            $json_manifest = str_replace('":"', '": "', $json_manifest);
+            $json_manifest = json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+            //$json_manifest = preg_replace('~","~', "\",\n\"", $json_manifest);
+            //$json_manifest = preg_replace('~^\{~', "{\n", $json_manifest);
+            //$json_manifest = preg_replace('~\}$~', "\n}", $json_manifest);
+            //$json_manifest = preg_replace('~^\"~m', '  "', $json_manifest);
+            //$json_manifest = str_replace('":"', '": "', $json_manifest);
             file_put_contents($manifest_file, $json_manifest);
 
             if (array_has($options, 'php_manifest')) {
