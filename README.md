@@ -16,11 +16,11 @@ Provides revisioning of files in a specified folder location.
 
 Options that are available:
 
-* hash - sha256
-* hash_length - no change to hash string
-* minify - default is false.
-* minify_cache - default is true (this reduces secondary use by 30+ seconds)
-* php_manifest - generates a php equivalent of the json revision file.
+* hash - default is `sha256`
+* hash_length - default is no change to the hash string
+* minify - default is `false`.
+* minify_cache - default is `true`. Reduces secondary use by 30+ seconds.
+* php_manifest - default is `false`. Generates a php equivalent of the json revision file.
 
 ```
 {SOURCE_FOLDER}:
