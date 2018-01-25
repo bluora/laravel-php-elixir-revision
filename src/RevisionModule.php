@@ -23,7 +23,10 @@ class RevisionModule extends AbstractModule
 
         Elixir::storePath($source_path);
 
-        Elixir::makeDir($source_path.'/../.elixir-revision-cache', true);
+        // Only create if the minify_cache=false is not set.
+        if (!(isset($options[2]['minify_cache']) && !$options[2]['minify_cache'])) {
+            Elixir::makeDir($source_path.'/../.elixir-revision-cache', true);
+        }
 
         if (empty($options)) {
             return true;
@@ -148,26 +151,32 @@ class RevisionModule extends AbstractModule
 
                 // Process minification to destination.
                 if ($minify) {
-                    // Minify cache.
-                    $minify_cache = $source_path.'/../.elixir-revision-cache';
-                    $minify_file_hash = hash('sha256', $source_file);
-                    $minify_contents_hash = hash_file('sha256', $source_file);
-                    $minify_previous_path = $minify_cache.'/'.$minify_file_hash.'.'.$minify_contents_hash;
 
-                    if (!file_exists($minify_previous_path)) {
-                        $class = '\\MatthiasMullie\\Minify\\'.strtoupper($path_info['extension']);
-                        (new $class($source_file))->minify($minify_previous_path);
-                    }
+                    if (!(isset($options['minify_cache']) && !$options['minify_cache'])) {
+                        // Minify cache.
+                        $minify_cache = $source_path.'/../.elixir-revision-cache';
+                        $minify_file_hash = hash('sha256', $source_file);
+                        $minify_contents_hash = hash_file('sha256', $source_file);
+                        $minify_previous_path = $minify_cache.'/'.$minify_file_hash.'.'.$minify_contents_hash;
 
-                    copy($minify_previous_path, $destination_file);
-
-                    // Remove previous copies.
-                    foreach (glob($minify_cache.'/'.$minify_file_hash.'.*') as $file_path) {
-                        if ($minify_previous_path !== $file_path) {
-                            continue;
+                        if (!file_exists($minify_previous_path)) {
+                            $class = '\\MatthiasMullie\\Minify\\'.strtoupper($path_info['extension']);
+                            (new $class($source_file))->minify($minify_previous_path);
                         }
 
-                        unlink($file_path);
+                        copy($minify_previous_path, $destination_file);
+
+                        // Remove previous copies.
+                        foreach (glob($minify_cache.'/'.$minify_file_hash.'.*') as $file_path) {
+                            if ($minify_previous_path === $file_path) {
+                                continue;
+                            }
+
+                            unlink($file_path);
+                        }
+                    } else {
+                        $class = '\\MatthiasMullie\\Minify\\'.strtoupper($path_info['extension']);
+                        (new $class($source_file))->minify($destination_file);
                     }
                 }
 
